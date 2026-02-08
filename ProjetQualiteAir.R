@@ -1,3 +1,9 @@
+#Libraries----------------------------------------------------------------------
+library(htmltools)
+library(leaflet)
+
+
+
 #File---------------------------------------------------------------------------
 
 #Import file
@@ -13,38 +19,38 @@ mesures$valeur = as.numeric(mesures$valeur)
 mesures$valeur.brute = as.numeric(mesures$valeur.brute)
 mesures$Latitude = as.numeric(mesures$Latitude)
 mesures$Longitude = as.numeric(mesures$Longitude)
+names(mesures)[names(mesures) == "nom.site"] = "Noms"
 
 
 
 #Vars---------------------------------------------------------------------------
 
 #Define vars that could be often used
-capteurs = mesures$nom.site
 valeurs = mesures$valeur
 valeursBrutes = mesures$valeur.brute
-noms = mesures$nom.site
-latitudes = aggregate(mesures$Latitude ~ noms, data = mesures, FUN = mean)
-longitudes = aggregate(mesures$Longitude ~ noms, data = mesures, FUN = mean)
+Noms = mesures$Noms
+latitudes = aggregate(mesures$Latitude ~ Noms, data = mesures, FUN = mean)
+longitudes = aggregate(mesures$Longitude ~ Noms, data = mesures, FUN = mean)
 coordonnees = cbind(latitudes, longitudes$`mesures$Longitude`)
-names(coordonnees) = c("Noms", "Latitudes", "Longitudes")
+names(coordonnees) = c("Noms", "Latitude", "Longitude")
 
 #For graphs
 moyenne_totale = mean(valeursBrutes)
 moyennes_totales = aggregate(valeursBrutes ~ as.POSIXct(mesures$Date.de.début), FUN = mean)
-names(moyennes_totales) = c("Dates", "Values")
+names(moyennes_totales) = c("Dates", "valeur")
 moyennes_semaine_heure = aggregate(valeursBrutes ~ as.POSIXlt(mesures$Date.de.début)$wday, FUN = mean)
-names(moyennes_semaine_heure) = c("Dates", "Values")
+names(moyennes_semaine_heure) = c("Dates", "valeur")
 moyenne_jour = aggregate(valeursBrutes ~ as.POSIXlt(mesures$Date.de.début)$hour, FUN = mean)
-names(moyenne_jour) = c("Dates", "Values")
-moyenne_site = aggregate(valeursBrutes ~ mesures$nom.site, FUN = mean)
-names(moyenne_site) = c("Noms", "Values")
+names(moyenne_jour) = c("Dates", "valeur")
+moyenne_site = aggregate(valeursBrutes ~ mesures$Noms, FUN = mean)
+names(moyenne_site) = c("Noms", "valeur")
 
 
 
 #Map----------------------------------------------------------------------------
 
 #Data to display on the map
-data = moyenne_site
+data = subset(mesures, Date.de.début == "2025-01-01 00:00:00")
 
 #Colors for the map
 Colors_legend = data.frame(color = c("#872181", "#960032", "#FF5050", "#F0E641", "#50CCAA", "#50F0E6", "#ADADAD"), 
@@ -56,19 +62,17 @@ points_colors = colorBin(palette = Colors_legend$color,
 
 #Display the map
 #https://r-charts.com/spatial/interactive-maps-leaflet/
-library(htmltools)
-library(leaflet)
 map = leaflet(width = 688.5, height = 650, data = data) %>%
   setView(lng = 2, lat = 46.5, zoom = 6) %>%
   addProviderTiles("OpenStreetMap.Mapnik") %>%
   addScaleBar(position = "bottomleft") %>%
-  addCircleMarkers(lng = coordonnees$Longitudes, 
-                   lat = coordonnees$Latitudes, 
-                   popup = coordonnees$Noms, 
-                   label = lapply(paste(coordonnees$Noms, " : ", round(data$Values, 1), "µg/m<sup>3</sup>"), HTML), 
+  addCircleMarkers(lng = data$Longitude, 
+                   lat = data$Latitude, 
+                   popup = data$Noms, 
+                   label = lapply(paste(data$Noms, " : ", round(data$valeur, 1), "µg/m<sup>3</sup>"), HTML), 
                    labelOptions = labelOptions(html = TRUE), 
                    radius = 4, 
-                   color = points_colors(data$Values), 
+                   color = points_colors(data$valeur), 
                    opacity = 1,
                    fillOpacity = 1) %>%
                    #group = "Métropole"
@@ -96,7 +100,7 @@ map
 
 #Total
 plot(moyennes_totales$Dates, 
-     moyennes_totales$Values, 
+     moyennes_totales$valeur, 
      type = "l", 
      xlab = "Date", 
      ylab = expression("Concentration en PM  "["2,5"]), 
@@ -104,7 +108,7 @@ plot(moyennes_totales$Dates,
 
 #Par semaine
 plot(moyennes_semaine_heure$Dates, 
-     moyennes_semaine_heure$Values, 
+     moyennes_semaine_heure$valeur, 
      type = "l", 
      xlab = "Jour de la semaine (0 = Dimanche, 1 = Lundi ...)", 
      ylab = expression("Concentration en PM  "["2,5"]), 
@@ -112,7 +116,7 @@ plot(moyennes_semaine_heure$Dates,
 
 #Par jour
 plot(moyenne_jour$Dates, 
-     moyenne_jour$Values, 
+     moyenne_jour$valeur, 
      type = "l", 
      xlab = "Heure", 
      ylab = expression("Concentration en PM  "["2,5"]), 
