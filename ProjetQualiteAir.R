@@ -1,6 +1,8 @@
 #Libraries----------------------------------------------------------------------
 library(htmltools)
 library(leaflet)
+library(leafpop)
+library(ggplot2)
 
 
 
@@ -10,9 +12,9 @@ library(leaflet)
 mesures = read.csv2("Janvier.csv", sep = ",")
 
 #Suppression des valeurs invalides -------------------------------------------------------- a voir plus tard si on les gère aussi
-mesures$valeur = as.numeric(gsub(",", ".", mesures$valeur))
-mesures$valeur.brute = as.numeric(gsub(",", ".", mesures$valeur.brute))
-mesures = mesures[!is.na(mesures$valeur.brute) & !is.na(mesures$valeur), ]
+#mesures$valeur = as.numeric(gsub(",", ".", mesures$valeur))
+#mesures$valeur.brute = as.numeric(gsub(",", ".", mesures$valeur.brute))
+#mesures = mesures[!is.na(mesures$valeur.brute) & !is.na(mesures$valeur), ]
 
 #Format file
 mesures$valeur = as.numeric(mesures$valeur)
@@ -47,10 +49,38 @@ names(moyenne_site) = c("Noms", "valeur")
 
 
 
+#Graphs-------------------------------------------------------------------------
+
+#Total
+graphe_total= plot(moyennes_totales$Dates, 
+                  moyennes_totales$valeur, 
+                  type = "l", 
+                  xlab = "Date", 
+                  ylab = expression("Concentration en PM  "["2,5"]), 
+                  main = expression("Moyenne de la concentration en PM"["2,5"]~" en France en fonction du temps."))
+
+#Par semaine
+graphe_semaine = plot(moyennes_semaine_heure$Dates, 
+                      moyennes_semaine_heure$valeur, 
+                      type = "l", 
+                      xlab = "Jour de la semaine (0 = Dimanche, 1 = Lundi ...)", 
+                      ylab = expression("Concentration en PM  "["2,5"]), 
+                      main = expression("Moyenne de la concentration en PM"["2,5"]~" en France en fonction du temps."))
+
+#Par jour
+graphe_jour = plot(moyenne_jour$Dates, 
+                   moyenne_jour$valeur, 
+                   type = "l", 
+                   xlab = "Heure", 
+                   ylab = expression("Concentration en PM  "["2,5"]), 
+                   main = expression("Moyenne de la concentration en PM"["2,5"]~" en France en fonction du temps."))
+
+
 #Map----------------------------------------------------------------------------
 
 #Data to display on the map
 data = subset(mesures, Date.de.début == "2025-01-01 00:00:00")
+NOM = "Chateauroux Sud"
 
 #Colors for the map
 Colors_legend = data.frame(color = c("#872181", "#960032", "#FF5050", "#F0E641", "#50CCAA", "#50F0E6", "#ADADAD"), 
@@ -60,21 +90,41 @@ points_colors = colorBin(palette = Colors_legend$color,
                          bins = c(-Inf, 0.1, 20.1, 40.1, 60.1, 90.1, 200.1, Inf), 
                          na.color = "#ADADAD")
 
+GRAPHE = function(name) {
+  print(length(name))
+  L = list()
+  for (i in 1:length(name)) {;
+    print(paste(100*i/length(name), "%"))
+    subset_name = subset(mesures, mesures$Noms == name[i])
+    L[[i]] = ggplot(data.frame(Date = as.POSIXct(subset_name$Date.de.début), valeur = subset_name$valeur), aes(Date, valeur)) + geom_line()
+  }
+  return(L)
+}
+
+
 #Display the map
 #https://r-charts.com/spatial/interactive-maps-leaflet/
-map = leaflet(width = 688.5, height = 650, data = data) %>%
+map = leaflet(data = data) %>%
   setView(lng = 2, lat = 46.5, zoom = 6) %>%
   addProviderTiles("OpenStreetMap.Mapnik") %>%
   addScaleBar(position = "bottomleft") %>%
+  addMapPane("Invalide", zIndex = 401) %>%
+  addMapPane("<= 20", zIndex = 402) %>%
+  addMapPane("20 - 40", zIndex = 403) %>%
+  addMapPane("40 - 60", zIndex = 404) %>%
+  addMapPane("60 - 90", zIndex = 405) %>%
+  addMapPane("90 - 120", zIndex = 406) %>%
+  addMapPane("> 120", zIndex = 407) %>%
   addCircleMarkers(lng = data$Longitude, 
                    lat = data$Latitude, 
-                   popup = data$Noms, 
-                   label = lapply(paste(data$Noms, " : ", round(data$valeur, 1), "µg/m<sup>3</sup>"), HTML), 
-                   labelOptions = labelOptions(html = TRUE), 
+                   #popup = paste(data$Noms, "<hr>", round(data$valeur, 1), "µg/m<sup>3</sup>"), 
+                   popup = paste(data$Noms,popupGraph(GRAPHE(data$Noms))),
+                   #label = lapply(paste(data$Noms, " : ", round(data$valeur, 1), "µg/m<sup>3</sup>"), HTML), 
                    radius = 4, 
                    color = points_colors(data$valeur), 
                    opacity = 1,
-                   fillOpacity = 1) %>%
+                   fillOpacity = 1 ) %>%
+                   #options = pathOptions(pane = Colors_legend$title)
                    #group = "Métropole"
   addLegend(position = "bottomright", 
             colors = Colors_legend$color, 
@@ -94,31 +144,4 @@ map = leaflet(width = 688.5, height = 650, data = data) %>%
   #                 overlayGroups = c("Métropole", "Martinique", "Guadeloupe", "Guyane", "La Réunion", "Mayotte")) # remplacé par addEasyButtonBar
 map
 
-
-
-#Graphs-------------------------------------------------------------------------
-
-#Total
-plot(moyennes_totales$Dates, 
-     moyennes_totales$valeur, 
-     type = "l", 
-     xlab = "Date", 
-     ylab = expression("Concentration en PM  "["2,5"]), 
-     main = expression("Moyenne de la concentration en PM"["2,5"]~" en France en fonction du temps."))
-
-#Par semaine
-plot(moyennes_semaine_heure$Dates, 
-     moyennes_semaine_heure$valeur, 
-     type = "l", 
-     xlab = "Jour de la semaine (0 = Dimanche, 1 = Lundi ...)", 
-     ylab = expression("Concentration en PM  "["2,5"]), 
-     main = expression("Moyenne de la concentration en PM"["2,5"]~" en France en fonction du temps."))
-
-#Par jour
-plot(moyenne_jour$Dates, 
-     moyenne_jour$valeur, 
-     type = "l", 
-     xlab = "Heure", 
-     ylab = expression("Concentration en PM  "["2,5"]), 
-     main = expression("Moyenne de la concentration en PM"["2,5"]~" en France en fonction du temps."))
 
