@@ -19,6 +19,7 @@ library(ggplot2)
 #File---------------------------------------------------------------------------
 #Set working directory
 setwd("/autofs/unityaccount/cremi/bdureau/S2/CMIISI/Projet 2025-2026")
+setwd("C:/Users/bapti/OneDrive/Documents/Fichiers/Travail/L1/S2/ProjetQualiteAir")
 
 #Import file
 mesures = read.csv2("JanvierFevrier.csv", sep = ",")
@@ -128,6 +129,7 @@ GRAPHE = function(name) {
 #Data to display on the map
 data = subset(mesures, Date.de.début == "2025-01-01 00:00:00")
 data = mesures[which.max(mesures$valeur.brute), 1:9]
+data = mesures[37785,]
 
 #Display the map
 map = leaflet(data = data) %>%
