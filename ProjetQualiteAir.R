@@ -10,15 +10,17 @@
 #Libraries----------------------------------------------------------------------
 library(htmltools)
 library(leaflet)
+library(leaflet.extras)
 library(leaflet.extras2)
 library(leafpop)
 library(ggplot2)
+library(corrplot)
 
 
 
-#File---------------------------------------------------------------------------
+#File and vars------------------------------------------------------------------
 #Set working directory
-setwd("/autofs/unityaccount/cremi/bdureau/S2/CMIISI/Projet 2025-2026")
+#setwd("/autofs/unityaccount/cremi/bdureau/S2/CMIISI/Projet 2025-2026")
 setwd("C:/Users/bapti/OneDrive/Documents/Fichiers/Travail/L1/S2/ProjetQualiteAir")
 
 #Import file
@@ -34,12 +36,21 @@ mesures$Latitude = as.numeric(mesures$Latitude)
 mesures$Longitude = as.numeric(mesures$Longitude)
 names(mesures)[names(mesures) == "nom.site"] = "Noms"
 
+#Create a data frame with the values per station by time
+longitudes = aggregate(mesures$Longitude ~ Noms, data = mesures, FUN = mean)
+Station_data = subset(mesures, Noms == "A7 Salaise Ouest")$valeur.brute
+for (i in longitudes$Noms[-1]) {
+  Station_data = cbind(Station_data, subset(mesures, Noms == i)$valeur.brute)
+}
+Station_data = as.data.frame(Station_data)
+names(Station_data) = longitudes$Noms
 
-
-#Vars---------------------------------------------------------------------------
+#Delete stations with only invalid data
+stations_valides = names(Station_data)[colSums(is.na(Station_data)) != nrow(Station_data)]
+Station_data = Station_data[, stations_valides]
+mesures = subset(mesures, Noms %in% stations_valides)
 
 #Define vars that could be often used
-valeurs = mesures$valeur
 valeursBrutes = mesures$valeur.brute
 Noms = mesures$Noms
 latitudes = aggregate(mesures$Latitude ~ Noms, data = mesures, FUN = mean)
@@ -47,7 +58,8 @@ longitudes = aggregate(mesures$Longitude ~ Noms, data = mesures, FUN = mean)
 coordonnees = cbind(latitudes, longitudes$`mesures$Longitude`)
 names(coordonnees) = c("Noms", "Latitude", "Longitude")
 
-#For graphs
+
+ #For graphs
 france_moyenne_totale = mean(valeursBrutes)
 
 france_moyennes_jf_heure = aggregate(valeursBrutes ~ as.POSIXct(mesures$Date.de.début), FUN = mean)
@@ -104,7 +116,7 @@ DISPLAY_GRAPH = function(graph_data){
 #Display the graph with inserted data
 DISPLAY_GRAPH(france_moyennes_jf_heure)
 
-#Map----------------------------------------------------------------------------
+#Map function-------------------------------------------------------------------
 
 #Colors for the map
 Colors_legend = data.frame(color = c("#872181", "#960032", "#FF5050", "#F0E641", "#50CCAA", "#50F0E6", "#ADADAD"), 
@@ -126,13 +138,8 @@ GRAPHE = function(name) {
   return(L)
 }
 
-#Data to display on the map
-data = subset(mesures, Date.de.début == "2025-01-01 00:00:00")
-data = mesures[which.max(mesures$valeur.brute), 1:9]
-data = mesures[37785,]
-
 #Display the map
-map = leaflet(data = data) %>%
+map = function(data) {leaflet(data = data) %>%
   setView(lng = 2, lat = 46.5, zoom = 6) %>%
   addProviderTiles("OpenStreetMap.Mapnik") %>%
   addScaleBar(position = "bottomleft") %>%
@@ -169,15 +176,76 @@ map = leaflet(data = data) %>%
             </div>") %>%
   addEasyButton(easyButton(icon = "fa-crosshairs", 
                            title = "Centrer la carte sur la position courante", 
-                           onClick = JS("function(btn, map){ map.setView([46.5, 2], zoom = 6); }")))# %>%
-  #addControl()
-  #addTimeslider(data = data, 
-  #              options = timesliderOptions(position = "topright",
-  #                                          timeAttribute = "Date.de.début"))
+                           onClick = JS("function(btn, map){ map.setView([46.5, 2], zoom = 6); }")))
+}
 
-#addEasyButtonBar(easyButton(), 
-#                 easyButton())
-#addLayersControl(position = "bottomleft", 
-#                 overlayGroups = c("Métropole", "Martinique", "Guadeloupe", "Guyane", "La Réunion", "Mayotte")) # remplacé par addEasyButtonBar
-map
+#Map------------------------------------------------------------------------------
+map(subset(mesures, Date.de.début == "2025-01-01 00:00:00"))
+    
+map(mesures[which.max(mesures$valeur.brute), 1:9])
 
+map(cbind(site_moyenne_totale, coordonnees))
+
+#Correlation--------------------------------------------------------------------
+X = as.matrix(Station_data)
+#MatCorr = cor(X, use = "complete.obs")
+MatCorr = cor(Station_data, use = "pairwise.complete.obs")
+
+plot.new()
+dev.off()
+corrplot(MatCorr, tl.cex = 1)
+diag(MatCorr) = NA
+
+#Max
+idx = which(MatCorr == max(MatCorr, na.rm = TRUE), arr.ind = TRUE)
+station1 = rownames(MatCorr)[idx[1,1]]
+station2 = colnames(MatCorr)[idx[1,2]]
+corr_value = MatCorr[idx[1,1], idx[1,2]]
+
+map(subset(cbind(site_moyenne_totale, coordonnees), Noms %in% c(station1, station2)))
+corr_value
+
+#Min
+idx = which(MatCorr == min(MatCorr, na.rm = TRUE), arr.ind = TRUE)
+station3 = rownames(MatCorr)[idx[1,1]]
+station4 = colnames(MatCorr)[idx[1,2]]
+corr_value = MatCorr[idx[1,1], idx[1,2]]
+
+map(subset(cbind(site_moyenne_totale, coordonnees), Noms %in% c(station3, station4)))
+corr_value
+
+
+
+#Heatmap------------------------------------------------------------------------
+heat_data = cbind(coordonnees, site_moyenne_totale$valeur)
+names(heat_data)[4] = "valeur"
+
+leaflet(heat_data) %>%
+  setView(lng = 2, lat = 46.5, zoom = 6) %>%
+  addProviderTiles("OpenStreetMap.Mapnik") %>%
+  addHeatmap(
+    lng = ~Longitude,
+    lat = ~Latitude,
+    intensity = ~valeur,
+    blur = 1,
+    max = max(heat_data$valeur),
+    radius = 35,                #Taille d’influence des stations
+    gradient = colorNumeric(
+      palette = c("blue", "cyan", "green", "yellow", "orange", "red", "darkred"),
+      domain = heat_data$valeur
+    )(heat_data$valeur)
+  )
+
+
+
+#Exceding the OMS recommendation------------------------------------------------
+seuil_OMS = 15
+
+depassements_OMS = aggregate(mesures$valeur.brute > seuil_OMS ~ mesures$Noms, FUN = sum, na.rm = TRUE)
+names(depassements_OMS) = c("Station", "Heures_depassement")
+depassements_OMS$Total_heures = aggregate(mesures$valeur.brute ~ mesures$Noms, FUN = length)$`mesures$valeur.brute`
+depassements_OMS$Pourcentage = 100 * depassements_OMS$Heures_depassement / depassements_OMS$Total_heures
+
+depassements_OMS = depassements_OMS[order(depassements_OMS$Pourcentage, decreasing = TRUE), ]
+
+depassements_OMS
