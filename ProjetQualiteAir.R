@@ -60,18 +60,21 @@ names(coordonnees) = c("Noms", "Latitude", "Longitude")
 
 
  #For graphs
-france_moyenne_totale = mean(valeursBrutes)
+france_moyenne_totale = mean(valeursBrutes, na.rm = TRUE)
 
-france_moyennes_jf_heure = aggregate(valeursBrutes ~ as.POSIXct(mesures$Date.de.début), FUN = mean)
+france_moyennes_jf_heure = aggregate(valeursBrutes ~ as.POSIXct(mesures$Date.de.début), FUN = mean, na.rm = TRUE)
 names(france_moyennes_jf_heure) = c("Dates", "valeur")
 
-france_moyennes_semaine_jour = aggregate(valeursBrutes ~ as.POSIXlt(mesures$Date.de.début)$wday, FUN = mean)
+france_moyennes_jf_jour = aggregate(valeursBrutes ~ as.Date(mesures$Date.de.début), FUN = mean, na.rm = TRUE)
+names(france_moyennes_jf_jour) = c("Dates", "valeur")
+
+france_moyennes_semaine_jour = aggregate(valeursBrutes ~ as.POSIXlt(mesures$Date.de.début)$wday, FUN = mean, na.rm = TRUE)
 names(france_moyennes_semaine_jour) = c("Dates", "valeur")
 
-france_moyenne_jour_heure = aggregate(valeursBrutes ~ as.POSIXlt(mesures$Date.de.début)$hour, FUN = mean)
+france_moyenne_jour_heure = aggregate(valeursBrutes ~ as.POSIXlt(mesures$Date.de.début)$hour, FUN = mean, na.rm = TRUE)
 names(france_moyenne_jour_heure) = c("Dates", "valeur")
 
-site_moyenne_totale = aggregate(valeursBrutes ~ Noms, FUN = mean)
+site_moyenne_totale = aggregate(valeursBrutes ~ Noms, FUN = mean, na.rm = TRUE)
 names(site_moyenne_totale) = c("Noms", "valeur")
 
 site_moyennes_semaine_jour = list()
@@ -80,7 +83,7 @@ for (site in 1:length(coordonnees[,1])){
   if (all(sapply(temp$valeur.brute, is.na))){
     site_moyennes_semaine_jour[[site]] = data.frame(Dates = c(0, 1, 2, 3, 4, 5, 6), valeur = c(NA, NA, NA, NA, NA, NA, NA))
   }else{
-    temp2 = aggregate(temp$valeur.brute ~ as.POSIXlt(temp$Date.de.début)$wday, FUN = mean)
+    temp2 = aggregate(temp$valeur.brute ~ as.POSIXlt(temp$Date.de.début)$wday, FUN = mean, na.rm = TRUE)
     names(temp2) = c("Dates", "valeur")
     site_moyennes_semaine_jour[[site]] = temp2
   }
@@ -93,12 +96,18 @@ for (site in 1:length(coordonnees[,1])){
   if (all(sapply(temp$valeur.brute, is.na))){
     site_moyenne_jour_heure[[site]] = data.frame(Dates = c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23), valeur = c(NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA))
   }else{
-    temp2 = aggregate(temp$valeur.brute ~ as.POSIXlt(temp$Date.de.début)$hour, FUN = mean)
+    temp2 = aggregate(temp$valeur.brute ~ as.POSIXlt(temp$Date.de.début)$hour, FUN = mean, na.rm = TRUE)
     names(temp2) = c("Dates", "valeur")
     site_moyenne_jour_heure[[site]] = temp2
   }
 }
 names(site_moyenne_jour_heure) = coordonnees[,1]
+
+implantation_moyenne_totale = aggregate(valeursBrutes ~ mesures$type.d.implantation, FUN = mean, , na.rm = TRUE)
+names(implantation_moyenne_totale) = c("Type_d_implantation", "valeur")
+
+influence_moyenne_totale = aggregate(valeursBrutes ~ mesures$type.d.influence, FUN = mean, , na.rm = TRUE)
+names(influence_moyenne_totale) = c("Type_d_influence", "valeur")
 
 
 
@@ -110,11 +119,11 @@ DISPLAY_GRAPH = function(graph_data){
        type = "l", 
        xlab = "Date", 
        ylab = expression("Concentration en PM  "["2,5"]), 
-       main = expression("Moyenne de la concentration horaire en PM"["2,5"]~" en France en Janvier - Février 2025."))
+       main = expression("Moyenne de la concentration journalière en PM"["2,5"]~" en France en Janvier - Février 2025."))
 }
 
 #Display the graph with inserted data
-DISPLAY_GRAPH(france_moyennes_jf_heure)
+DISPLAY_GRAPH(france_moyennes_jf_jour)
 
 #Map function-------------------------------------------------------------------
 
@@ -186,7 +195,7 @@ map(mesures[which.max(mesures$valeur.brute), 1:9])
 
 map(cbind(site_moyenne_totale, coordonnees))
 
-#Correlation--------------------------------------------------------------------
+#Correlation between stations---------------------------------------------------
 X = as.matrix(Station_data)
 #MatCorr = cor(X, use = "complete.obs")
 MatCorr = cor(Station_data, use = "pairwise.complete.obs")
@@ -249,3 +258,5 @@ depassements_OMS$Pourcentage = 100 * depassements_OMS$Heures_depassement / depas
 depassements_OMS = depassements_OMS[order(depassements_OMS$Pourcentage, decreasing = TRUE), ]
 
 depassements_OMS
+
+
