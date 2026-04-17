@@ -22,7 +22,9 @@ library(leaflet.extras2)
 library(leafpop)
 library(ggplot2)
 library(corrplot)
+library(httr)
 library(dplyr)
+library(purrr)
 
 
 
@@ -32,8 +34,9 @@ library(dplyr)
 #setwd("/autofs/unityaccount/cremi/bdureau/S2/CMIISI/Projet 2025-2026")
 setwd("C:/Users/bapti/OneDrive/Documents/Fichiers/Travail/L1/S2/ProjetQualiteAir")
 
-#Import file
+#Import files
 mesures = read.csv2("JanvierFevrier.csv", sep = ",")
+medecin_revenu = read.csv2("MedecinRevenu.csv", sep = ";")
 
 #Keep only important data
 mesures = cbind(mesures[1:2], mesures[7:8], mesures[10], mesures[14:15], mesures[22:23])
@@ -70,7 +73,7 @@ DISPLAY_GRAPH = function(graph_data, text){
        type = "l", 
        xlab = "Date", 
        ylab = expression("Concentration en PM  "["2,5"]), 
-       main = expression(text)) #"Moyenne de la concentration journalière en PM"["2,5"]~" en France en Janvier - Février 2025."
+       main = text)
 }
 
 
@@ -114,7 +117,7 @@ map = function(data, title, infos) {leaflet(data = data) %>%
     addProviderTiles("OpenStreetMap.Mapnik") %>%
     addScaleBar(position = "bottomleft") %>%
     addMapPane("#ADADAD", zIndex = 401) %>%
-    addMapPane("#50F0E6", zIndex = 420) %>%
+    addMapPane("#50F0E6", zIndex = 402) %>%
     addMapPane("#50CCAA", zIndex = 403) %>%
     addMapPane("#F0E641", zIndex = 404) %>%
     addMapPane("#FF5050", zIndex = 405) %>%
@@ -168,6 +171,10 @@ names(coordonnees) = c("Noms", "Latitude", "Longitude")
 #France global mean
 france_moyenne_totale = mean(mesures$valeur.brute, na.rm = TRUE)
 
+#France mean per hour
+france_moyennes_jf_jour = aggregate(mesures$valeur.brute ~ as.Date(mesures$Date.de.début), FUN = mean, na.rm = TRUE)
+names(france_moyennes_jf_jour) = c("Dates", "valeur")
+
 #Global mean per site
 site_moyenne_totale = aggregate(mesures$valeur.brute ~ mesures$Noms, FUN = mean, na.rm = TRUE)
 names(site_moyenne_totale) = c("Noms", "valeur")
@@ -188,6 +195,28 @@ names(site_moyennes_jour) = c("Dates", "valeur", "Noms")
 depassements_OMS = aggregate(site_moyennes_jour$valeur > seuil_OMS ~ site_moyennes_jour$Noms, FUN = sum, na.rm = TRUE)
 names(depassements_OMS) = c("Station", "valeur")
 
+#Get the commune name and the commune code from data.gouv.fr
+reverse_geocode_ban = function(lat, lon) {
+  js = content(GET(paste0("https://api-adresse.data.gouv.fr/reverse/?lat=", lat, "&lon=", lon)), as = "parsed")
+  if (length(js$features) == 0) {
+    return(data.frame(commune = NA, code_insee = NA))
+  }
+  props = js$features[[1]]$properties
+  data.frame(commune = props$city, code_insee = props$citycode)
+}
+
+geo = pmap_dfr(list(coordonnees$Latitude, coordonnees$Longitude), reverse_geocode_ban)
+commune = bind_cols(coordonnees[1], geo)
+
+#Clean medecins and revenues to match used communes
+#medecin_revenu$Code = as.character(medecin_revenu$Code)
+#medecin_revenu$Code = ifelse(grepl("^751", medecin_revenu$Code), "75056", medecin_revenu$Code)
+#medecin_revenu$Code = ifelse(grepl("^6938", medecin_revenu$Code), "69123", medecin_revenu$Code)
+#medecin_revenu$Code = ifelse(grepl("^132", medecin_revenu$Code), "13055", medecin_revenu$Code)
+#medecin_revenu = aggregate(cbind(Revenu, Medecin) ~ Code, data = medecin_revenu, FUN = function(x) mean(x, na.rm = TRUE))
+medecin_revenu = subset(medecin_revenu, Code %in% commune$code_insee)
+setdiff(commune$code_insee, medecin_revenu$Code)
+
 
 
 #Display stats for report-------------------------------------------------------
@@ -205,6 +234,18 @@ implantation_moyennes
 
 
 france_moyenne_totale
+
+
+sum(france_moyennes_jf_jour$valeur > 15)
+
+
+DISPLAY_GRAPH(france_moyennes_jf_jour, "Moyenne de la concentration journalière en PM"["2,5"]~" en France en Janvier - Février 2025.")
+
+
+Colors_legend = COLOR_LEGEND(c("#872181", "#960032", "#FF5050", "#F0E641", "#50CCAA", "#50F0E6"),
+                             c("> 120", "90 - 120", "60 - 90", "40 - 60", "20 - 40", "<= 20"))
+points_colors = POINTS_COLOR(c(0.1, 20.1, 40.1, 60.1, 90.1, 200.1, Inf))
+map(cbind(coordonnees, site_moyenne_totale[2]), "<div style='text-align:center;'>PM<sub>2.5</sub><br><span style='font-size:10px;'>µg/m<sup>3</sup></span></div>", FALSE)
 
 
 site_moyenne_totale[order(site_moyenne_totale$valeur, decreasing = TRUE), ]
