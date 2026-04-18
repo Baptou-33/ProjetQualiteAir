@@ -37,6 +37,7 @@ setwd("C:/Users/bapti/OneDrive/Documents/Fichiers/Travail/L1/S2/ProjetQualiteAir
 #Import files
 mesures = read.csv2("JanvierFevrier.csv", sep = ",")
 medecin_revenu = read.csv2("MedecinRevenu.csv", sep = ";")
+population = read.csv2("Population.csv", sep = ",", fileEncoding = "latin1")
 
 #Keep only important data
 mesures = cbind(mesures[1:2], mesures[7:8], mesures[10], mesures[14:15], mesures[22:23])
@@ -117,12 +118,12 @@ map = function(data, title, infos) {leaflet(data = data) %>%
     addProviderTiles("OpenStreetMap.Mapnik") %>%
     addScaleBar(position = "bottomleft") %>%
     addMapPane("#ADADAD", zIndex = 401) %>%
-    addMapPane("#50F0E6", zIndex = 402) %>%
-    addMapPane("#50CCAA", zIndex = 403) %>%
-    addMapPane("#F0E641", zIndex = 404) %>%
-    addMapPane("#FF5050", zIndex = 405) %>%
-    addMapPane("#960032", zIndex = 406) %>%
-    addMapPane("#872181", zIndex = 407) %>%
+    addMapPane("#50F0E6", zIndex = 407) %>%
+    addMapPane("#50CCAA", zIndex = 406) %>%
+    addMapPane("#F0E641", zIndex = 405) %>%
+    addMapPane("#FF5050", zIndex = 404) %>%
+    addMapPane("#960032", zIndex = 403) %>%
+    addMapPane("#872181", zIndex = 402) %>%
     addCircleMarkers(lng = data$Longitude, 
                      lat = data$Latitude, 
                      if (infos){
@@ -191,6 +192,10 @@ for (site in coordonnees[,1]){
 }
 names(site_moyennes_jour) = c("Dates", "valeur", "Noms")
 
+#Heatmap
+heat_data = cbind(coordonnees, site_moyenne_totale$valeur)
+names(heat_data)[4] = "valeur"
+
 #Number of days above the OMS recommendation
 depassements_OMS = aggregate(site_moyennes_jour$valeur > seuil_OMS ~ site_moyennes_jour$Noms, FUN = sum, na.rm = TRUE)
 names(depassements_OMS) = c("Station", "valeur")
@@ -208,14 +213,60 @@ reverse_geocode_ban = function(lat, lon) {
 geo = pmap_dfr(list(coordonnees$Latitude, coordonnees$Longitude), reverse_geocode_ban)
 commune = bind_cols(coordonnees[1], geo)
 
-#Clean medecins and revenues to match used communes
-#medecin_revenu$Code = as.character(medecin_revenu$Code)
-#medecin_revenu$Code = ifelse(grepl("^751", medecin_revenu$Code), "75056", medecin_revenu$Code)
-#medecin_revenu$Code = ifelse(grepl("^6938", medecin_revenu$Code), "69123", medecin_revenu$Code)
-#medecin_revenu$Code = ifelse(grepl("^132", medecin_revenu$Code), "13055", medecin_revenu$Code)
-#medecin_revenu = aggregate(cbind(Revenu, Medecin) ~ Code, data = medecin_revenu, FUN = function(x) mean(x, na.rm = TRUE))
-medecin_revenu = subset(medecin_revenu, Code %in% commune$code_insee)
-setdiff(commune$code_insee, medecin_revenu$Code)
+#Manually adding SAINT EXUPERY
+commune[185, ]$code_insee = 69299
+commune[185, ]$commune = "Colombier-Saugnieu"
+
+#Clean communes
+commune$code_insee = ifelse(grepl("^751", commune$code_insee), "75056", commune$code_insee)
+commune$code_insee = ifelse(grepl("^6938", commune$code_insee), "69123", commune$code_insee)
+commune$code_insee = ifelse(grepl("^132", commune$code_insee), "13055", commune$code_insee)
+
+#Delete commune without doctor and revenues data
+commune = commune[!(commune$code_insee %in% setdiff(commune$code_insee, medecin_revenu$Code)), ]
+
+#Delete commune without population data
+commune = commune[commune$code_insee != "97611", ]
+
+#Add total population of big cities
+population = rbind(population, data.frame(Code = c("75056","69123","13055"), Population = c(2102650, 522969, 873076)))
+
+#Keep only usefull
+medecin_revenu = medecin_revenu[medecin_revenu$Code %in% commune$code_insee,]
+population = population[population$Code %in% commune$code_insee,]
+
+#Take the median of the air quality for each commune
+sub_site_moyenne_totale = merge(site_moyenne_totale[site_moyenne_totale$Noms %in% commune$Noms, ], commune, by = "Noms")
+sub_site_moyenne_totale = aggregate(sub_site_moyenne_totale$valeur ~ sub_site_moyenne_totale$commune, FUN = median, na.rm = TRUE)
+names(sub_site_moyenne_totale) = c("commune", "valeur")
+
+#Life quality index
+index_qualite_vie = merge(merge(unique(commune[2:3]), medecin_revenu, by.x = "code_insee", by.y = "Code", all.x = TRUE), population, by.x = "code_insee", by.y = "Code", all.x = TRUE)
+index_qualite_vie = merge(index_qualite_vie, sub_site_moyenne_totale, by = "commune")
+index_qualite_vie = na.omit(index_qualite_vie)
+index_qualite_vie$Medecin = as.numeric(index_qualite_vie$Medecin)
+names(index_qualite_vie) = c("commune", "Code", "Medecin", "Revenu", "Population",  "QualiteAir")
+
+#Differents calculs for the life quality index
+index_qualite_vie$valeur = scale(0.375 * scale(index_qualite_vie$Medecin) 
+                                 + 0.275 * scale(index_qualite_vie$Revenu) 
+                                 + 0.175 * scale(exp(-((index_qualite_vie$Population - 200000)^2) / (2 * 150000^2))) 
+                                 - 0.175 * exp(0.3 * (index_qualite_vie$QualiteAir - 15)))
+
+#Add coordonnees for each commune
+coordonnees_unique = coordonnees %>%
+  left_join(commune, by = "Noms") %>%
+  group_by(commune) %>%
+  slice(1) %>%
+  ungroup()
+coordonnees_unique = coordonnees_unique[1:166, ]
+index_qualite_vie = merge(index_qualite_vie, coordonnees_unique[2:4], by = "commune")
+
+names(index_qualite_vie) = c("Noms", "Code", "Medecin", "Revenu", "Population",  "QualiteAir", "valeur", "Latitude", "Longitude")
+
+#Put the air quality index in a range from 0 to 100%
+index_qualite_vie$valeur = index_qualite_vie$valeur - min(index_qualite_vie$valeur)
+index_qualite_vie$valeur = 100 * index_qualite_vie$valeur / max(index_qualite_vie$valeur)
 
 
 
@@ -260,6 +311,22 @@ points_colors = POINTS_COLOR(c(0, 15, Inf))
 map(cbind(coordonnees, site_moyenne_totale[2]), "<div style='text-align:center;'>PM<sub>2.5</sub><br><span style='font-size:10px;'>µg/m<sup>3</sup></span></div>", FALSE)
 
 
+leaflet(heat_data) %>%
+  setView(lng = 2, lat = 46.5, zoom = 6) %>%
+  addProviderTiles("OpenStreetMap.Mapnik") %>%
+  addHeatmap(
+    lng = ~Longitude,
+    lat = ~Latitude,
+    intensity = ~(valeur^4),
+    blur = 50,
+    max = max(heat_data$valeur),
+    radius = 30,
+  )
+
+
+cor(index_qualite_vie$Latitude, index_qualite_vie$QualiteAir, use = "complete.obs")
+
+
 depassements_OMS[order(depassements_OMS$valeur, decreasing = TRUE), ]
 
 
@@ -272,5 +339,16 @@ map(cbind(coordonnees, depassements_OMS[2]), "<div style='text-align:center;'><s
 sum(depassements_OMS$valeur < 5)
 
 
-map(cbind(coordonnees, site_moyenne_totale[2])[depassements_OMS$valeur<5, ], "<div style='text-align:center;'><span style='font-size:10px;'>Nbr de <br>dépassements</span></div>", FALSE)
+index_qualite_vie[order(index_qualite_vie$valeur, decreasing = TRUE), ]
+
+
+Colors_legend = COLOR_LEGEND(c("#50F0E6", "#50CCAA", "#F0E641", "#FF5050", "#960032", "#872181"),
+                             c("> 90%", "80% - 90%", "70% - 80%", "60% - 70%", "50% - 60%", "< 50%"))
+points_colors = POINTS_COLOR(c(0, 50, 60, 70, 80, 90, Inf))
+map(index_qualite_vie, "<div style='text-align:center;'><span style='font-size:10px;'>Index de<br>qualité de vie</span></div>", FALSE)
+
+
+
+
+
 

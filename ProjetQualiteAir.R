@@ -238,7 +238,7 @@ leaflet(heat_data) %>%
     intensity = ~valeur,
     blur = 1,
     max = max(heat_data$valeur),
-    radius = 35,                #Taille d’influence des stations
+    radius = 35,
     gradient = colorNumeric(
       palette = c("blue", "cyan", "green", "yellow", "orange", "red", "darkred"),
       domain = heat_data$valeur
