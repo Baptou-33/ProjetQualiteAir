@@ -209,7 +209,6 @@ reverse_geocode_ban = function(lat, lon) {
   props = js$features[[1]]$properties
   data.frame(commune = props$city, code_insee = props$citycode)
 }
-
 geo = pmap_dfr(list(coordonnees$Latitude, coordonnees$Longitude), reverse_geocode_ban)
 commune = bind_cols(coordonnees[1], geo)
 
@@ -247,13 +246,13 @@ index_qualite_vie = na.omit(index_qualite_vie)
 index_qualite_vie$Medecin = as.numeric(index_qualite_vie$Medecin)
 names(index_qualite_vie) = c("commune", "Code", "Medecin", "Revenu", "Population",  "QualiteAir")
 
-#Differents calculs for the life quality index
+#Calculating the life quality index
 index_qualite_vie$valeur = scale(0.375 * scale(index_qualite_vie$Medecin) 
                                  + 0.275 * scale(index_qualite_vie$Revenu) 
                                  + 0.175 * scale(exp(-((index_qualite_vie$Population - 200000)^2) / (2 * 150000^2))) 
                                  - 0.175 * exp(0.3 * (index_qualite_vie$QualiteAir - 15)))
 
-#Add coordonnees for each commune
+#Add coordinates for each commune
 coordonnees_unique = coordonnees %>%
   left_join(commune, by = "Noms") %>%
   group_by(commune) %>%
@@ -268,7 +267,7 @@ names(index_qualite_vie) = c("Noms", "Code", "Medecin", "Revenu", "Population", 
 index_qualite_vie$valeur = index_qualite_vie$valeur - min(index_qualite_vie$valeur)
 index_qualite_vie$valeur = 100 * index_qualite_vie$valeur / max(index_qualite_vie$valeur)
 
-
+index_qualite_vie = index_qualite_vie[order(index_qualite_vie$valeur, decreasing = TRUE), ]
 
 #Display stats for report-------------------------------------------------------
 
@@ -339,15 +338,25 @@ map(cbind(coordonnees, depassements_OMS[2]), "<div style='text-align:center;'><s
 sum(depassements_OMS$valeur < 5)
 
 
-index_qualite_vie[order(index_qualite_vie$valeur, decreasing = TRUE), ]
+index_qualite_vie
 
 
 Colors_legend = COLOR_LEGEND(c("#50F0E6", "#50CCAA", "#F0E641", "#FF5050", "#960032", "#872181"),
                              c("> 90%", "80% - 90%", "70% - 80%", "60% - 70%", "50% - 60%", "< 50%"))
 points_colors = POINTS_COLOR(c(0, 50, 60, 70, 80, 90, Inf))
-map(index_qualite_vie, "<div style='text-align:center;'><span style='font-size:10px;'>Index de<br>qualité de vie</span></div>", FALSE)
+map(index_qualite_vie[1:10, ], "<div style='text-align:center;'><span style='font-size:10px;'>Index de<br>qualité de vie</span></div>", FALSE)
 
-
+leaflet(index_qualite_vie) %>%
+  setView(lng = 2, lat = 46.5, zoom = 6) %>%
+  addProviderTiles("OpenStreetMap.Mapnik") %>%
+  addHeatmap(
+    lng = ~Longitude,
+    lat = ~Latitude,
+    intensity = ~(valeur^2.5),
+    blur = 50,
+    max = max(heat_data$valeur),
+    radius = 30,
+  )
 
 
 
