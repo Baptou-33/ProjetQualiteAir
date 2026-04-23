@@ -269,6 +269,8 @@ index_qualite_vie$valeur = 100 * index_qualite_vie$valeur / max(index_qualite_vi
 
 index_qualite_vie = index_qualite_vie[order(index_qualite_vie$valeur, decreasing = TRUE), ]
 
+
+
 #Display stats for report-------------------------------------------------------
 
 #Introduction
